@@ -26,49 +26,11 @@ boolean inOP;
 uint8 currentgroup = 0;
 boolean forceByteAlignment = FALSE;
 
-
-
-// I think separate function might be needed for each phase of the setup, but not sure
-// Init commands seem to be called automatically, but not sure if they are called at the right time
-// Some init commands are called at the right time, but not all of them???
-// I think 
-
-int servo_setup(uint16 slave)
-{
-   int retval;
-   uint16 u16val;
-   uint32 u32val;
-   
-   retval = 0;
-   // TODO: Init commands (see IO->Device->EtherCAT->Advanced Settings...->General->Init Commands)
-   // ?: P->S (this) vs I->P 
-
-   // Starup commands
-   u32val = 0x00110000;
-   retval += ec_SDOwrite(slave, 0xf081, 0x01, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
-   /* set flags */
-   u16val = 1;
-   retval += ec_SDOwrite(slave, 0x10f3, 0x05, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
-   
-   /* Map velocity PDO assignment via Complete Access*/
-   uint16 map_1c12[3] = {0x0002, 0x1600, 0x1606};
-   uint16 map_1c13[4] = {0x0003, 0x1a00, 0x1a01, 0x1a06};
-   retval += ec_SDOwrite(slave, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
-   retval += ec_SDOwrite(slave, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
-   
-   // /* set nominal DC link voltage */
-   u32val = 0x5dc0;
-   retval += ec_SDOwrite(slave, 0x8010, 0x19, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
-
-   printf("Servo slave %d set, retval = %d\n", slave, retval);
-   return 1;
-}
-
 void simpletest(char *ifname)
 {
-   int i, j, oloop, iloop, chk;
-   needlf = FALSE;
-   inOP = FALSE;
+    int i, j, oloop, iloop, chk;
+    needlf = FALSE;
+    inOP = FALSE;
 
    printf("Starting simple test\n");
 
@@ -78,26 +40,10 @@ void simpletest(char *ifname)
       printf("ec_init on %s succeeded.\n",ifname);
       /* find and auto-config slaves */
 
+
        if ( ec_config_init(FALSE) > 0 )
       {
          printf("%d slaves found and configured.\n",ec_slavecount);
-
-         // Should be: "Name: AMI8000-0000 ConfiguredAddress: 0x1001 State: 1"
-         printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-               ec_slave[1].name,
-               ec_slave[1].configadr,
-               ec_slave[1].state,
-               ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
-
-         // Set specific config
-         ec_slave[1].PO2SOconfig = servo_setup;
-
-         // Should be: "Name: AMI8000-0000 ConfiguredAddress: 0x1001 State: 1"
-         printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-               ec_slave[1].name,
-               ec_slave[1].configadr,
-               ec_slave[1].state,
-               ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
 
          if (forceByteAlignment)
          {
@@ -108,23 +54,11 @@ void simpletest(char *ifname)
             ec_config_map(&IOmap);
          }
 
-         printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-               ec_slave[1].name,
-               ec_slave[1].configadr,
-               ec_slave[1].state,
-               ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
-
          ec_configdc();
 
          printf("Slaves mapped, state to SAFE_OP.\n");
          /* wait for all slaves to reach SAFE_OP state */
-         uint16 act_state = ec_statecheck(1, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE * 4);
-         printf("%d =?= %d\n", EC_STATE_SAFE_OP, act_state);
-         printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-               ec_slave[1].name,
-               ec_slave[1].configadr,
-               ec_slave[1].state,
-               ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
+         ec_statecheck(0, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE * 4);
 
          oloop = ec_slave[0].Obytes;
          if ((oloop == 0) && (ec_slave[0].Obits > 0)) oloop = 1;
@@ -144,16 +78,6 @@ void simpletest(char *ifname)
          ec_receive_processdata(EC_TIMEOUTRET);
          /* request OP state for all slaves */
          ec_writestate(0);
-         
-         // Hier zat de fout in de code van Kilian I guess
-         // act_state = ec_statecheck(1, EC_STATE_OPERATIONAL,  EC_TIMEOUTSTATE * 4);
-         // printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
-         // printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-         //        ec_slave[1].name,
-         //        ec_slave[1].configadr,
-         //        ec_slave[1].state,
-         //        ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
-
          chk = 200;
          /* wait for all slaves to reach OP state */
          do
@@ -161,29 +85,12 @@ void simpletest(char *ifname)
             ec_send_processdata();
             ec_receive_processdata(EC_TIMEOUTRET);
             ec_writestate(0);
-            act_state = ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
+            ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
          }
          while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
-
-         printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
-         printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-                ec_slave[1].name,
-                ec_slave[1].configadr,
-                ec_slave[1].state,
-                ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
-
          if (ec_slave[0].state == EC_STATE_OPERATIONAL )
          {
             printf("Operational state reached for all slaves.\n");
-
-            act_state = ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
-            printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
-            printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-                  ec_slave[1].name,
-                  ec_slave[1].configadr,
-                  ec_slave[1].state,
-                  ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
-
             inOP = TRUE;
                 /* cyclic loop */
             for(i = 1; i <= 10000; i++)
