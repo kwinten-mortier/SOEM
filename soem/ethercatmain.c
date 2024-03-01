@@ -1104,7 +1104,7 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
       else /* no read mailbox available */
       {
          if (wkc > 0)
-            wkc = EC_TIMEOUT;
+            wkc = EC_TIMEOUT; // Here is the cause of the wrong retval
       }
    }
 

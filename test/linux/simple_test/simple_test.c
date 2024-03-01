@@ -31,8 +31,11 @@ boolean forceByteAlignment = FALSE;
 // I think separate function might be needed for each phase of the setup, but not sure
 // Init commands seem to be called automatically, but not sure if they are called at the right time
 // Some init commands are called at the right time, but not all of them???
-// I think 
+// Init commands: I->P vs P->S vs S->O
+// TODO: Init commands (see IO->Device->EtherCAT->Advanced Settings...->General->Init Commands)
 
+
+// Startup commands
 int servo_setup(uint16 slave)
 {
    int retval;
@@ -40,25 +43,38 @@ int servo_setup(uint16 slave)
    uint32 u32val;
    
    retval = 0;
-   // TODO: Init commands (see IO->Device->EtherCAT->Advanced Settings...->General->Init Commands)
-   // ?: P->S (this) vs I->P 
 
-   // Starup commands
+   /* set Revision number*/
    u32val = 0x00110000;
    retval += ec_SDOwrite(slave, 0xf081, 0x01, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
-   /* set flags */
-   u16val = 1;
+   // TODO: FPRD to let slave fill in data of the SDO. Answer is Mbx(CoE SDO) so maybe ec_SDOread? Ado = 0x1100 (Start FMMU/SM1) / Mailbox In / length = 256
+   // For Ado = 0x1100, also look at section 3.8.4 of "the EtherCAT thesis" 
+   // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
+   // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
+
+   printf("retval = %d\n", retval); // Why do we get -5??? -> See Comment in ec_SDOwrite in ethercat.c (print wkc for debugging)
+                                    // retval = -5 means return value request timeout
+                                    // We get this for every startup command, so maybe the slave is not in the right state?
+   /* set Flags */
+   u16val = 0x0001;
    retval += ec_SDOwrite(slave, 0x10f3, 0x05, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   // TODO: FPRD to let slave fill in data of the SDO. Answer is Mbx(CoE SDO) so maybe ec_SDOread? Ado = 0x1100 (Start FMMU/SM1) / Mailbox In / length = 256
+   // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
+   // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
    
    /* Map velocity PDO assignment via Complete Access*/
    uint16 map_1c12[3] = {0x0002, 0x1600, 0x1606};
    uint16 map_1c13[4] = {0x0003, 0x1a00, 0x1a01, 0x1a06};
    retval += ec_SDOwrite(slave, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
    retval += ec_SDOwrite(slave, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
+   // TODO: Again, same FPRD command seems to be needed to read in data from the slave
+   // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
    
    // /* set nominal DC link voltage */
    u32val = 0x5dc0;
    retval += ec_SDOwrite(slave, 0x8010, 0x19, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   // TODO: Again, same FPRD command seems to be needed to read in data from the slave
+   // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
 
    printf("Servo slave %d set, retval = %d\n", slave, retval);
    return 1;
@@ -175,14 +191,6 @@ void simpletest(char *ifname)
          if (ec_slave[0].state == EC_STATE_OPERATIONAL )
          {
             printf("Operational state reached for all slaves.\n");
-
-            act_state = ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
-            printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
-            printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-                  ec_slave[1].name,
-                  ec_slave[1].configadr,
-                  ec_slave[1].state,
-                  ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
 
             inOP = TRUE;
                 /* cyclic loop */

@@ -437,7 +437,7 @@ int ecx_SDOwrite(ecx_contextt *context, uint16 Slave, uint16 Index, uint8 SubInd
       {
          ec_clearmbx(&MbxIn);
          /* read slave response */
-         wkc = ecx_mbxreceive(context, Slave, (ec_mbxbuft *)&MbxIn, Timeout);
+         wkc = ecx_mbxreceive(context, Slave, (ec_mbxbuft *)&MbxIn, Timeout); // Here is the problem with return value, see end of used function, something with read mailbox unavailable
          if (wkc > 0)
          {
             /* response should be CoE, SDO response, correct index and subindex */
