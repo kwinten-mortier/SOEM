@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "oshw.h"
 #include "osal.h"
 #include "ethercattype.h"
@@ -34,7 +35,7 @@ static void ecx_writedatagramdata(void *datagramdata, ec_cmdtype com, uint16 len
    {
       switch (com)
       {
-         case EC_CMD_NOP:
+         // case EC_CMD_NOP:
             /* Fall-through */
          case EC_CMD_APRD:
             /* Fall-through */
@@ -409,6 +410,31 @@ int ecx_FPWR(ecx_portt *port, uint16 ADP, uint16 ADO, uint16 length, void *data,
    return wkc;
 }
 
+/** FPWR "configured address write" primitive. Blocking. Modified for mailbox servo
+ *
+ * @param[in] port        = port context struct
+ * @param[in] ADP         = Address Position, slave that has address writes.
+ * @param[in] ADO         = Address Offset, slave memory address
+ * @param[in] length      = length of databuffer
+ * @param[in] data        = databuffer to write to slave.
+ * @param[in] timeout     = timeout in us, standard is EC_TIMEOUTRET
+ * @return Workcounter or EC_NOFRAME
+ */
+int ecx_FPWR_mbxmod(ecx_portt *port, uint16 ADP, uint16 ADO, uint16 length, void *data, int timeout)
+{
+   int wkc;
+   uint8 idx;
+   uint8 nodata = 0;
+
+   idx = ecx_getindex(port);
+   ecx_setupdatagram(port, &(port->txbuf[idx]), EC_CMD_FPWR, idx, ADP, ADO, length, data);
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_FPWR, idx, FALSE, ADP, 0x10ff, sizeof(nodata), &nodata);
+   wkc = ecx_srconfirm(port, idx, timeout);
+   ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   return wkc;
+}
+
 /** FPWR "configured address write" primitive. Blocking.
  *
  * @param[in] port        = port context struct
@@ -535,6 +561,88 @@ int ecx_LRWDC(ecx_portt *port, uint32 LogAdr, uint16 length, void *data, uint16 
    return wkc;
 }
 
+int ecx_5cmds_nop(ecx_portt *port, int timeout) {
+   uint8 idx;
+   int wkc;
+
+   uint8 null1 = 0;
+   uint16 null2 = 0;
+   uint32 null4 = 0;
+   uint32 time;
+   struct timespec current_time;
+   // Get the current time
+   clock_gettime(CLOCK_REALTIME, &current_time);
+
+   // Calculate the time in nanoseconds
+   long long nanoseconds = current_time.tv_sec * 1000000000LL + current_time.tv_nsec;
+   time = nanoseconds & 0xffffffff;
+
+   idx = ecx_getindex(port);
+   ecx_setupdatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, 0, 0x900, 4, &null4);
+   // DC SysTime L (lower half)
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_ARMW, idx, TRUE, 0, 0x910, 4, &time);
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
+   // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
+   struct outputs {
+      uint16 status_word;
+      uint32 target_pos;
+      uint32 padding;
+   };
+   struct outputs data;
+   data.status_word = 6;
+   data.target_pos = 0x02971d70;
+   data.padding = 0;
+
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, TRUE, 0, 0x100, 10, &data);
+   // Status
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_BRD, idx, FALSE, 0, 0x130, 2, &null2);
+   wkc = ecx_srconfirm(port, idx, timeout);
+   ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   return wkc;
+}
+
+int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
+   uint8 idx;
+   int wkc;
+
+   uint8 null1 = 0;
+   uint16 null2 = 0;
+   uint32 null4 = 0;
+   uint32 time;
+   struct timespec current_time;
+   // Get the current time
+   clock_gettime(CLOCK_REALTIME, &current_time);
+
+   // Calculate the time in nanoseconds
+   long long nanoseconds = current_time.tv_sec * 1000000000LL + current_time.tv_nsec;
+   time = nanoseconds & 0xffffffff;
+
+   idx = ecx_getindex(port);
+   ecx_setupdatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, 0, 0x900, 4, &null4);
+   // DC SysTime L (lower half)
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_ARMW, idx, TRUE, 0, 0x910, 4, &time);
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
+   // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
+   struct outputs {
+      uint16 status_word;
+      uint32 target_pos;
+      uint32 padding;
+   };
+   struct outputs data;
+   data.status_word = 6;
+   data.target_pos = 0x02971d70;
+   data.padding = 0;
+
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRW, idx, TRUE, 0, 0x100, 10, &data);
+   // Status
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_BRD, idx, FALSE, 0, 0x130, 2, &null2);
+   wkc = ecx_srconfirm(port, idx, timeout);
+   ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   return wkc;
+}
+
 #ifdef EC_VER1
 int ec_setupdatagram(void *frame, uint8 com, uint8 idx, uint16 ADP, uint16 ADO, uint16 length, void *data)
 {
@@ -633,5 +741,12 @@ int ec_LWR(uint32 LogAdr, uint16 length, void *data, int timeout)
 int ec_LRWDC(uint32 LogAdr, uint16 length, void *data, uint16 DCrs, int64 *DCtime, int timeout)
 {
    return ecx_LRWDC(&ecx_port, LogAdr, length, data, DCrs, DCtime, timeout);
+}
+
+int ec_5cmds_nop(int timeout) {
+   return ecx_5cmds_nop(&ecx_port, timeout);
+}
+int ec_5cmds_lrw(int timeout) {
+   return ecx_5cmds_lrw(&ecx_port, timeout);
 }
 #endif

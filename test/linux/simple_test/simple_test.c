@@ -97,6 +97,8 @@ void simpletest(char *ifname)
        if ( ec_config_init(FALSE) > 0 )
       {
          printf("%d slaves found and configured.\n",ec_slavecount);
+         // Set state to PREOP
+         ec_FPWRw(ec_slave[1].configadr, ECT_REG_ALCTL, htoes(EC_STATE_PRE_OP | EC_STATE_ACK), EC_TIMEOUTRET3);
 
          // Should be: "Name: AMI8000-0000 ConfiguredAddress: 0x1001 State: 1"
          printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
@@ -132,9 +134,21 @@ void simpletest(char *ifname)
 
          ec_configdc();
 
-         printf("Slaves mapped, state to SAFE_OP.\n");
+         // Send 5 cmds with nop
+         int iter = 0;
+         while(++iter < 4) ec_5cmds_nop(EC_TIMEOUTRET3);
+
+         // Set state to SAFEOP
+         ec_slave[1].state = EC_STATE_SAFE_OP;
+         ec_writestate(1);
          /* wait for all slaves to reach SAFE_OP state */
-         uint16 act_state = ec_statecheck(1, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE * 4);
+         uint16 act_state = ec_statecheck(1, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE);
+
+         // Send 5 cmds with lrw
+         iter = 0;
+         while(++iter < 100) ec_5cmds_lrw(EC_TIMEOUTRET3);
+
+         printf("Slaves mapped, state to SAFE_OP.\n");
          printf("%d =?= %d\n", EC_STATE_SAFE_OP, act_state);
          printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
                ec_slave[1].name,
@@ -323,8 +337,8 @@ OSAL_THREAD_FUNC ecatcheck( void *ptr )
                   }
                }
             }
-            if(!ec_group[currentgroup].docheckstate)
-               printf("OK : all slaves resumed OPERATIONAL.\n");
+            // if(!ec_group[currentgroup].docheckstate)
+            //    printf("OK : all slaves resumed OPERATIONAL.\n");
         }
         osal_usleep(10000);
     }

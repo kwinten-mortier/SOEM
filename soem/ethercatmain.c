@@ -118,7 +118,7 @@ ecx_contextt  ecx_context = {
     &ec_FMMU,           // .eepFMMU       =
     NULL,               // .FOEhook()
     NULL,               // .EOEhook()
-    0,                  // .manualstatechange
+    1,                  // .manualstatechange
     NULL,               // .userdata
 };
 #endif
@@ -984,7 +984,7 @@ int ecx_mbxsend(ecx_contextt *context, uint16 slave,ec_mbxbuft *mbx, int timeout
       {
          mbxwo = context->slavelist[slave].mbx_wo;
          /* write slave in mailbox */
-         wkc = ecx_FPWR(context->port, configadr, mbxwo, mbxl, mbx, EC_TIMEOUTRET3);
+         wkc = ecx_FPWR_mbxmod(context->port, configadr, mbxwo, mbxl, mbx, EC_TIMEOUTRET3);
       }
       else
       {
@@ -1027,6 +1027,8 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
          SMstat = 0;
          wkc = ecx_FPRD(context->port, configadr, ECT_REG_SM1STAT, sizeof(SMstat), &SMstat, EC_TIMEOUTRET);
          SMstat = etohs(SMstat);
+         // printf("SMstat: %d\n", SMstat);
+         // printf("Mbx ro: %#x\n", context->slavelist[slave].mbx_ro);
          if (((SMstat & 0x08) == 0) && (timeout > EC_LOCALDELAY))
          {
             osal_usleep(EC_LOCALDELAY);
@@ -1034,13 +1036,14 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
       }
       while (((wkc <= 0) || ((SMstat & 0x08) == 0)) && (osal_timer_is_expired(&timer) == FALSE));
 
-      if ((wkc > 0) && ((SMstat & 0x08) > 0)) /* read mailbox available ? */
+      if (((wkc > 0) && ((SMstat & 0x08) > 0)) || TRUE) /* read mailbox available ? */
       {
          mbxro = context->slavelist[slave].mbx_ro;
          mbxh = (ec_mbxheadert *)mbx;
          do
          {
-            wkc = ecx_FPRD(context->port, configadr, mbxro, mbxl, mbx, EC_TIMEOUTRET); /* get mailbox */
+            // Change length
+            wkc = ecx_FPRD(context->port, configadr, mbxro, 256, mbx, EC_TIMEOUTRET); /* get mailbox */
             if ((wkc > 0) && ((mbxh->mbxtype & 0x0f) == 0x00)) /* Mailbox error response? */
             {
                MBXEp = (ec_mbxerrort *)mbx;

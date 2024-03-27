@@ -329,7 +329,12 @@ int ecx_config_init(ecx_contextt *context, uint8 usetable)
          context->slavelist[slave].Itype = etohs(val16);
          /* a node offset is used to improve readability of network frames */
          /* this has no impact on the number of addressable slaves (auto wrap around) */
-         ecx_APWRw(context->port, ADPh, ECT_REG_STADR, htoes(slave + EC_NODEOFFSET) , EC_TIMEOUTRET3); /* set node address of slave */
+         // Here: Slave port is set
+         if(slave == 1) {
+            ecx_APWRw(context->port, ADPh, ECT_REG_STADR, 1001, EC_TIMEOUTRET3); /* set node address of slave */
+         } else {
+            ecx_APWRw(context->port, ADPh, ECT_REG_STADR, htoes(slave + EC_NODEOFFSET) , EC_TIMEOUTRET3); /* set node address of slave */
+         }
          if (slave == 1)
          {
             b = 1; /* kill non ecat frames for first slave */
@@ -640,8 +645,8 @@ static int ecx_lookup_mapping(ecx_contextt *context, uint16 slave, uint32 *Osize
 
 static int ecx_map_coe_soe(ecx_contextt *context, uint16 slave, int thread_n)
 {
-   uint32 Isize, Osize;
-   int rval;
+   // uint32 Isize, Osize;
+   // int rval;
 
    ecx_statecheck(context, slave, EC_STATE_PRE_OP, EC_TIMEOUTSTATE); /* check state change pre-op */
 
@@ -658,36 +663,40 @@ static int ecx_map_coe_soe(ecx_contextt *context, uint16 slave, int thread_n)
       context->slavelist[slave].PO2SOconfigx(context, slave);
    }
    /* if slave not found in configlist find IO mapping in slave self */
-   if (!context->slavelist[slave].configindex)
-   {
-      Isize = 0;
-      Osize = 0;
-      if (context->slavelist[slave].mbx_proto & ECT_MBXPROT_COE) /* has CoE */
-      {
-         rval = 0;
-         if (context->slavelist[slave].CoEdetails & ECT_COEDET_SDOCA) /* has Complete Access */
-         {
-            /* read PDO mapping via CoE and use Complete Access */
-            rval = ecx_readPDOmapCA(context, slave, thread_n, &Osize, &Isize);
-         }
-         if (!rval) /* CA not available or not succeeded */
-         {
-            /* read PDO mapping via CoE */
-            rval = ecx_readPDOmap(context, slave, &Osize, &Isize);
-         }
-         EC_PRINT("  CoE Osize:%u Isize:%u\n", Osize, Isize);
-      }
-      if ((!Isize && !Osize) && (context->slavelist[slave].mbx_proto & ECT_MBXPROT_SOE)) /* has SoE */
-      {
-         /* read AT / MDT mapping via SoE */
-         rval = ecx_readIDNmap(context, slave, &Osize, &Isize);
-         context->slavelist[slave].SM[2].SMlength = htoes((uint16)((Osize + 7) / 8));
-         context->slavelist[slave].SM[3].SMlength = htoes((uint16)((Isize + 7) / 8));
-         EC_PRINT("  SoE Osize:%u Isize:%u\n", Osize, Isize);
-      }
-      context->slavelist[slave].Obits = (uint16)Osize;
-      context->slavelist[slave].Ibits = (uint16)Isize;
-   }
+   // if (!context->slavelist[slave].configindex)
+   // {
+   //    Isize = 0;
+   //    Osize = 0;
+   //    if (context->slavelist[slave].mbx_proto & ECT_MBXPROT_COE) /* has CoE */
+   //    {
+   //       rval = 0;
+   //       if (context->slavelist[slave].CoEdetails & ECT_COEDET_SDOCA) /* has Complete Access */
+   //       {
+   //          // Does Initiate upload
+   //          /* read PDO mapping via CoE and use Complete Access */
+   //          rval = ecx_readPDOmapCA(context, slave, thread_n, &Osize, &Isize);
+   //       }
+   //       if (!rval) /* CA not available or not succeeded */
+   //       {
+   //          // Does second Initiate upload
+   //          /* read PDO mapping via CoE */
+   //          rval = ecx_readPDOmap(context, slave, &Osize, &Isize);
+   //       }
+   //       EC_PRINT("  CoE Osize:%u Isize:%u\n", Osize, Isize);
+   //    }
+   //    if ((!Isize && !Osize) && (context->slavelist[slave].mbx_proto & ECT_MBXPROT_SOE)) /* has SoE */
+   //    {
+   //       /* read AT / MDT mapping via SoE */
+   //       rval = ecx_readIDNmap(context, slave, &Osize, &Isize);
+   //       context->slavelist[slave].SM[2].SMlength = htoes((uint16)((Osize + 7) / 8));
+   //       context->slavelist[slave].SM[3].SMlength = htoes((uint16)((Isize + 7) / 8));
+   //       EC_PRINT("  SoE Osize:%u Isize:%u\n", Osize, Isize);
+   //    }
+   //    context->slavelist[slave].Obits = (uint16)Osize;
+   //    context->slavelist[slave].Ibits = (uint16)Isize;
+   // }
+   // Surpress warning
+   thread_n = thread_n;
 
    return 1;
 }
