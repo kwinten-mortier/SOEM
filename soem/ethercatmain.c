@@ -904,6 +904,64 @@ uint16 ecx_statecheck(ecx_contextt *context, uint16 slave, uint16 reqstate, int 
    return state;
 }
 
+/** Check and safe op state change
+ * This is a blocking function.
+ * To refresh the state of all slaves ecx_readstate() should be called
+ * @warning If this is used for slave 0 (=all slaves), the state of all slaves is read by an bitwise OR operation.
+ * The returned value is also the bitwise OR state of all slaves.
+ * This has some implications for the BOOT state. The Boot state representation collides with INIT | PRE_OP so this
+ * function cannot be used for slave = 0 and reqstate = EC_STATE_BOOT and also, if the returned state is BOOT, some
+ * slaves might actually be in INIT and PRE_OP and not in BOOT.
+ * @param[in] context     = context struct
+ * @param[in] slave       = Slave number, 0 = all slaves (only the "slavelist[0].state" is refreshed)
+ * @param[in] reqstate    = Requested state
+ * @param[in] timeout     = Timeout value in us
+ * @return Requested state, or found state after timeout.
+ */
+uint16 ecx_so_statecheck(ecx_contextt *context, uint16 slave, uint16 reqstate, int timeout)
+{
+   uint16 configadr, state, rval;
+   ec_alstatust slstat;
+   osal_timert timer;
+
+   if ( slave > *(context->slavecount) )
+   {
+      return 0;
+   }
+   osal_timer_start(&timer, timeout);
+   configadr = context->slavelist[slave].configadr;
+   do
+   {
+      if (slave < 1)
+      {
+         rval = 0;
+         ecx_BRD(context->port, 0, ECT_REG_ALSTAT, sizeof(rval), &rval , EC_TIMEOUTRET);
+         rval = etohs(rval);
+      }
+      else
+      {
+         ecx_5cmds_nop(context->port, EC_TIMEOUTRET);
+         osal_usleep(1000);
+
+         slstat.alstatus = 0;
+         slstat.alstatuscode = 0;
+         ecx_5cmds_nop(context->port, EC_TIMEOUTRET);
+         ecx_FPRD(context->port, configadr, ECT_REG_ALSTAT, sizeof(slstat), &slstat, EC_TIMEOUTRET);
+         rval = etohs(slstat.alstatus);
+         context->slavelist[slave].ALstatuscode = etohs(slstat.alstatuscode);
+      }
+      state = rval & 0x000f; /* read slave status */
+      if (state != reqstate)
+      {
+         osal_usleep(1000);
+      }
+   }
+   while ((state != reqstate) && (osal_timer_is_expired(&timer) == FALSE));
+   context->slavelist[slave].state = rval;
+
+   return state;
+}
+
 /** Get index of next mailbox counter value.
  * Used for Mailbox Link Layer.
  * @param[in] cnt     = Mailbox counter value [0..7]
@@ -2183,6 +2241,25 @@ int ec_writestate(uint16 slave)
 uint16 ec_statecheck(uint16 slave, uint16 reqstate, int timeout)
 {
    return ecx_statecheck (&ecx_context, slave, reqstate, timeout);
+}
+
+/** Check slave state to safe op
+ * This is a blocking function.
+ * To refresh the state of all slaves ecx_readstate() should be called.
+ * @warning If this is used for slave 0 (=all slaves), the state of all slaves is read by an bitwise OR operation.
+ * The returned value is also the bitwise OR state of all slaves.
+ * This has some implications for the BOOT state. The Boot state representation collides with INIT | PRE_OP so this
+ * function cannot be used for slave = 0 and reqstate = EC_STATE_BOOT and also, if the returned state is BOOT, some
+ * slaves might actually be in INIT and PRE_OP and not in BOOT.
+ * @param[in] slave       = Slave number, 0 = all slaves
+ * @param[in] reqstate    = Requested state
+ * @param[in] timeout     = Timeout value in us
+ * @return Requested state, or found state after timeout.
+ * @see ecx_statecheck
+ */
+uint16 ec_so_statecheck(uint16 slave, uint16 reqstate, int timeout)
+{
+   return ecx_so_statecheck(&ecx_context, slave, reqstate, timeout);
 }
 
 /** Check if IN mailbox of slave is empty.

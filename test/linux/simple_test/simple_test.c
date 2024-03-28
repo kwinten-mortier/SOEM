@@ -52,7 +52,7 @@ int servo_setup(uint16 slave)
    // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
    // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
 
-   printf("retval = %d\n", retval); // Why do we get -5??? -> See Comment in ec_SDOwrite in ethercat.c (print wkc for debugging)
+   printf("0xf081: retval = %d\n", retval); // Why do we get -5??? -> See Comment in ec_SDOwrite in ethercat.c (print wkc for debugging)
                                     // retval = -5 means return value request timeout
                                     // We get this for every startup command, so maybe the slave is not in the right state?
    /* set Flags */
@@ -61,23 +61,56 @@ int servo_setup(uint16 slave)
    // TODO: FPRD to let slave fill in data of the SDO. Answer is Mbx(CoE SDO) so maybe ec_SDOread? Ado = 0x1100 (Start FMMU/SM1) / Mailbox In / length = 256
    // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
    // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
+   printf("0x10f3: retval = %d\n", retval);
    
    /* Map velocity PDO assignment via Complete Access*/
    uint16 map_1c12[3] = {0x0002, 0x1600, 0x1606};
    uint16 map_1c13[4] = {0x0003, 0x1a00, 0x1a01, 0x1a06};
    retval += ec_SDOwrite(slave, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
+   printf("0x1c12: retval = %d\n", retval);
    retval += ec_SDOwrite(slave, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
    // TODO: Again, same FPRD command seems to be needed to read in data from the slave
    // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
+   printf("0x1c13: retval = %d\n", retval);
    
    // /* set nominal DC link voltage */
-   u32val = 0x5dc0;
+   u32val = 24000;
    retval += ec_SDOwrite(slave, 0x8010, 0x19, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
    // TODO: Again, same FPRD command seems to be needed to read in data from the slave
    // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
+   printf("0x8010: retval = %d\n", retval);
 
-   printf("Servo slave %d set, retval = %d\n", slave, retval);
-   return 1;
+   // Register SYNC0 and SYNC1 cycle time
+   uint32 cycletime_01[2] = {0xf424, 0x1d905c};
+   retval += ec_FPWR(ec_slave[slave].configadr, 0x9a0, 8, &cycletime_01, EC_TIMEOUTRET);
+   printf("0x9a0: retval = %d\n", retval);
+
+   // Set DC StartTime0
+   // Get the current time
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 DC_starttime_0 = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
+   uint8 idx = ec_getindex();
+   ec_setupdatagram(NULL, EC_CMD_FPWR, idx, ec_slave[slave].configadr, 0x990, 8, &DC_starttime_0);
+   uint64 null8 = 0;
+   ec_adddatagram(NULL, EC_CMD_FPRD, idx, FALSE, ec_slave[slave].configadr, 0x910, 8, &null8);
+   ec_srconfirm(idx, EC_TIMEOUTRET);
+   ec_setbufstat(idx, EC_BUF_EMPTY);
+
+   // Set DC Cycle Unit and Activation
+   uint8 DC_CU_ACT[2] = {0, 0x7};
+   ec_FPWR(ec_slave[slave].configadr, 0x980, 2, &DC_CU_ACT, EC_TIMEOUTRET);
+
+   // Set DC Latch0 and Latch1
+   uint8 DC_Latch_01[2] = {0, 0};
+   ec_FPWR(ec_slave[slave].configadr, 0x9a0, 2, &DC_Latch_01, EC_TIMEOUTRET);
+
+   // TODO: do 0x600 and 0x610
+
+   // CHECK: If this are all startup commands (see .xml)
+
+   printf("Servo slave %d set, retval = %d (should be 5)\n", slave, retval);
+   return retval;
 }
 
 void simpletest(char *ifname)
@@ -142,7 +175,7 @@ void simpletest(char *ifname)
          ec_slave[1].state = EC_STATE_SAFE_OP;
          ec_writestate(1);
          /* wait for all slaves to reach SAFE_OP state */
-         uint16 act_state = ec_statecheck(1, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE);
+         uint16 act_state = ec_so_statecheck(1, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE);
 
          // Send 5 cmds with lrw
          iter = 0;

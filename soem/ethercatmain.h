@@ -524,6 +524,9 @@ int ecx_send_overlap_processdata(ecx_contextt *context);
 int ecx_receive_processdata(ecx_contextt *context, int timeout);
 int ecx_send_processdata_group(ecx_contextt *context, uint8 group);
 
+uint16 ec_so_statecheck(uint16 slave, uint16 reqstate, int timeout);
+uint16 ecx_so_statecheck(ecx_contextt *context, uint16 slave, uint16 reqstate, int timeout);
+
 #ifdef __cplusplus
 }
 #endif

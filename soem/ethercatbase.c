@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 #include "oshw.h"
 #include "osal.h"
 #include "ethercattype.h"
@@ -569,12 +570,9 @@ int ecx_5cmds_nop(ecx_portt *port, int timeout) {
    uint16 null2 = 0;
    uint32 null4 = 0;
    uint32 time;
-   struct timespec current_time;
-   // Get the current time
-   clock_gettime(CLOCK_REALTIME, &current_time);
-
-   // Calculate the time in nanoseconds
-   long long nanoseconds = current_time.tv_sec * 1000000000LL + current_time.tv_nsec;
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 nanoseconds = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
    time = nanoseconds & 0xffffffff;
 
    idx = ecx_getindex(port);
@@ -610,12 +608,9 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
    uint16 null2 = 0;
    uint32 null4 = 0;
    uint32 time;
-   struct timespec current_time;
-   // Get the current time
-   clock_gettime(CLOCK_REALTIME, &current_time);
-
-   // Calculate the time in nanoseconds
-   long long nanoseconds = current_time.tv_sec * 1000000000LL + current_time.tv_nsec;
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 nanoseconds = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
    time = nanoseconds & 0xffffffff;
 
    idx = ecx_getindex(port);
@@ -646,12 +641,16 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
 #ifdef EC_VER1
 int ec_setupdatagram(void *frame, uint8 com, uint8 idx, uint16 ADP, uint16 ADO, uint16 length, void *data)
 {
-   return ecx_setupdatagram (&ecx_port, frame, com, idx, ADP, ADO, length, data);
+   assert(frame ==  NULL); // If this triggers change back code below...
+   // FIX: fix datagram
+   return ecx_setupdatagram (&ecx_port, &(ecx_port.txbuf[idx]), com, idx, ADP, ADO, length, data);
 }
 
 uint16 ec_adddatagram (void *frame, uint8 com, uint8 idx, boolean more, uint16 ADP, uint16 ADO, uint16 length, void *data)
 {
-   return ecx_adddatagram (&ecx_port, frame, com, idx, more, ADP, ADO, length, data);
+   assert(frame ==  NULL); // If this triggers change back code below...
+   // FIX: fix datagram
+   return ecx_adddatagram (&ecx_port, &(ecx_port.txbuf[idx]), com, idx, more, ADP, ADO, length, data);
 }
 
 int ec_BWR(uint16 ADP, uint16 ADO, uint16 length, void *data, int timeout)
