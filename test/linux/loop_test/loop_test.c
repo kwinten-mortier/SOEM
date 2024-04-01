@@ -426,7 +426,7 @@ void simpleloop(char *ifname)
 
          // Send 5 cmds with lrw
          iter = 0;
-         while(++iter < 100) ec_5cmds_lrw(EC_TIMEOUTRET3);
+         // while(++iter < 100) ec_5cmds_lrw(EC_TIMEOUTRET3);
 
          printf("Slaves mapped, state to SAFE_OP.\n");
          printf("%d =?= %d\n", EC_STATE_SAFE_OP, act_state);
@@ -448,9 +448,9 @@ void simpleloop(char *ifname)
          printf("Request operational state for all slaves\n");
          expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
          printf("Calculated workcounter %d\n", expectedWKC);
-         ec_slave[0].state = EC_STATE_OPERATIONAL;
+         ec_slave[1].state = EC_STATE_OPERATIONAL;
          /* request OP state for all slaves */
-         ec_writestate(0);
+         ec_writestate(1);
 
          chk = 200;
          // Start loop
@@ -459,12 +459,19 @@ void simpleloop(char *ifname)
          /* wait for all slaves to reach OP state */
          do
          {
+            ec_5cmds_lrw(EC_TIMEOUTRET3);
             // ec_send_processdata();
             // ec_receive_processdata(EC_TIMEOUTRET);
-            ec_writestate(0);
-            act_state = ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
+            ec_writestate(1);
+            act_state = ec_statecheck(1, EC_STATE_OPERATIONAL, 50000);
          }
-         while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+         while (chk-- && (ec_slave[1].state != EC_STATE_OPERATIONAL));
+
+         for(int i = 0; i < 10000; i++) {
+            ec_5cmds_lrw(EC_TIMEOUTRET3);
+
+            osal_usleep(1975);
+         }
 
          printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
          printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",

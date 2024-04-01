@@ -588,7 +588,7 @@ int ecx_5cmds_nop(ecx_portt *port, int timeout) {
    };
    struct outputs data;
    data.status_word = 6;
-   data.target_pos = 0x02971d70;
+   data.target_pos = 0x0;
    data.padding = 0;
 
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, TRUE, 0, 0x100, 10, &data);
@@ -620,12 +620,12 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
    // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
    struct outputs {
-      uint16 status_word;
+      uint16 controlword;
       uint32 target_pos;
       uint32 padding;
    };
    struct outputs data;
-   data.status_word = 6;
+   data.controlword = 6;
    data.target_pos = 0x02971d70;
    data.padding = 0;
 
@@ -634,6 +634,23 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_BRD, idx, FALSE, 0, 0x130, 2, &null2);
    wkc = ecx_srconfirm(port, idx, timeout);
    ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   uint8* rcvd = port->rxbuf[idx];
+   // printf("------------------------------------\n");
+   // for (int i = 0; i < 100; i++) {
+   //    printf("Received %d: %x\n", i, rcvd[i]);
+   // }
+
+   // Get inputs
+   typedef struct {
+      uint32 position;
+      uint16 statusword;
+      int32 erroract;
+   } inputs;
+   inputs* in;
+   in = (inputs *)&rcvd[57]; // Start of inputs
+
+   printf("Inputs: %f - %#x - %d\n", (double)in->position/10000.0, in->statusword, in->erroract);
 
    return wkc;
 }

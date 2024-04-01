@@ -1999,11 +1999,13 @@ int ecx_receive_processdata_group(ecx_contextt *context, uint8 group, int timeou
    /* read the same number of frames as send */
    while (pos >= 0)
    {
+      printf("Test1\n");
       idx = idxstack->idx[pos];
       wkc2 = ecx_waitinframe(context->port, idx, timeout);
       /* check if there is input data in frame */
       if (wkc2 > EC_NOFRAME)
       {
+         printf("Test2\n");
          if((rxbuf[idx][EC_CMDOFFSET]==EC_CMD_LRD) || (rxbuf[idx][EC_CMDOFFSET]==EC_CMD_LRW))
          {
             if(idxstack->dcoffset[pos] > 0)
