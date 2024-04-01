@@ -8,10 +8,14 @@
  *
  * (c)Arthur Ketels 2010 - 2011
  */
+#define _GNU_SOURCE  
 
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+
+#include <pthread.h>
+#include <sched.h>
 
 #include "ethercat.h"
 
@@ -113,7 +117,38 @@ int servo_setup(uint16 slave)
    return retval;
 }
 
-void simpletest(char *ifname)
+void * loop_message(void* ptr) {
+   if(!ptr) {
+      printf("Error: loop_message should have arguments\n");
+      pthread_exit(NULL);
+   }
+
+   int chk = *(int*)ptr;
+
+   // Start precise timer for 2000us
+   ec_timet current;
+   ec_timet prev = osal_current_time();
+
+   while(chk > 0) {
+      // Start precise timer for 2000us
+      do {
+         current = osal_current_time();
+      } while((current.sec - prev.sec) * 1000000 + (current.usec - prev.usec) < 2000);
+      prev = current;
+      ec_alstatust slstat;
+      slstat.alstatus = 0;
+      slstat.alstatuscode = 0;
+      ec_BRD(1100, ECT_REG_ALSTAT, sizeof(slstat), &slstat, EC_TIMEOUTRET);
+      ec_5cmds_nop(EC_TIMEOUTRET3);
+
+      // Increment chk
+      chk--;
+   }
+
+   pthread_exit(NULL);
+}
+
+void simpleloop(char *ifname)
 {
    int i, j, oloop, iloop, chk;
    needlf = FALSE;
@@ -202,31 +237,28 @@ void simpletest(char *ifname)
          expectedWKC = (ec_group[0].outputsWKC * 2) + ec_group[0].inputsWKC;
          printf("Calculated workcounter %d\n", expectedWKC);
          ec_slave[0].state = EC_STATE_OPERATIONAL;
-         /* send one valid process data to make outputs in slaves happy*/
-         ec_send_processdata();
-         ec_receive_processdata(EC_TIMEOUTRET);
          /* request OP state for all slaves */
          ec_writestate(0);
          
-         // Hier zat de fout in de code van Kilian I guess
-         // act_state = ec_statecheck(1, EC_STATE_OPERATIONAL,  EC_TIMEOUTSTATE * 4);
-         // printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
-         // printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
-         //        ec_slave[1].name,
-         //        ec_slave[1].configadr,
-         //        ec_slave[1].state,
-         //        ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
+         // Set attributes for thread to be locked to specific cpu with high (realtime) priority
+         pthread_t thread;
+         pthread_attr_t attr;
+         cpu_set_t cpuset;
+         pthread_attr_init(&attr);
+         CPU_ZERO(&cpuset);
+         CPU_SET(1, &cpuset);
+         pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpuset);
+         pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
+         struct sched_param param;
+         param.sched_priority = 99;
+         pthread_attr_setschedparam(&attr, &param);
 
          chk = 200;
-         /* wait for all slaves to reach OP state */
-         do
-         {
-            ec_send_processdata();
-            ec_receive_processdata(EC_TIMEOUTRET);
-            ec_writestate(0);
-            act_state = ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
-         }
-         while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+         // Create thread
+         pthread_create(&thread, &attr, loop_message, &chk);
+
+         // Wait for thread to finish
+         pthread_join(thread, NULL);
 
          printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
          printf("Name: %s ConfiguredAddress: %#x State: %d Error: %s\n",
@@ -386,7 +418,7 @@ int main(int argc, char *argv[])
       /* create thread to handle slave error handling in OP */
       osal_thread_create(&thread1, 128000, &ecatcheck, NULL);
       /* start cyclic part */
-      simpletest(argv[1]);
+      simpleloop(argv[1]);
    }
    else
    {
