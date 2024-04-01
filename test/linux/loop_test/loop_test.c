@@ -126,19 +126,21 @@ void * loop_message(void* ptr) {
    int chk = *(int*)ptr;
 
    // Start precise timer for 2000us
-   ec_timet current;
-   ec_timet prev = osal_current_time();
+   // use clock_gettime(CLOCK_MONOTONIC, &ts) for better precision
+   struct timespec tcur={0,0}, tprev={0,0};
+   clock_gettime(CLOCK_MONOTONIC, &tcur);
+   tprev = tcur;
 
    while(chk > 0) {
       // Start precise timer for 2000us
       do {
-         current = osal_current_time();
-      } while((current.sec - prev.sec) * 1000000 + (current.usec - prev.usec) < 2000);
-      prev = current;
-      ec_alstatust slstat;
-      slstat.alstatus = 0;
-      slstat.alstatuscode = 0;
-      ec_BRD(1100, ECT_REG_ALSTAT, sizeof(slstat), &slstat, EC_TIMEOUTRET);
+         clock_gettime(CLOCK_MONOTONIC, &tcur);
+      } while((tcur.tv_sec - tprev.tv_sec) * 1000000000 + (tcur.tv_nsec - tprev.tv_nsec) < 2000000);
+      tprev = tcur;
+      // ec_alstatust slstat;
+      // slstat.alstatus = 0;
+      // slstat.alstatuscode = 0;
+      // ec_BRD(1100, ECT_REG_ALSTAT, sizeof(slstat), &slstat, EC_TIMEOUTRET);
       ec_5cmds_nop(EC_TIMEOUTRET3);
 
       // Increment chk
