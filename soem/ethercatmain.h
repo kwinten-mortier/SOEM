@@ -527,6 +527,12 @@ int ecx_send_processdata_group(ecx_contextt *context, uint8 group);
 uint16 ec_so_statecheck(uint16 slave, uint16 reqstate, int timeout);
 uint16 ecx_so_statecheck(ecx_contextt *context, uint16 slave, uint16 reqstate, int timeout);
 
+int ecx_5cmds_nop(ecx_portt *port, int timeout);
+int ecx_5cmds_lrw(ecx_contextt *context, uint16 controlword, uint32 target_pos, our_inputs* in, int timeout);
+
+int ec_5cmds_nop(int timeout);
+int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, our_inputs* in, int timeout);
+
 #ifdef __cplusplus
 }
 #endif

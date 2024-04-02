@@ -1999,13 +1999,11 @@ int ecx_receive_processdata_group(ecx_contextt *context, uint8 group, int timeou
    /* read the same number of frames as send */
    while (pos >= 0)
    {
-      printf("Test1\n");
       idx = idxstack->idx[pos];
       wkc2 = ecx_waitinframe(context->port, idx, timeout);
       /* check if there is input data in frame */
       if (wkc2 > EC_NOFRAME)
       {
-         printf("Test2\n");
          if((rxbuf[idx][EC_CMDOFFSET]==EC_CMD_LRD) || (rxbuf[idx][EC_CMDOFFSET]==EC_CMD_LRW))
          {
             if(idxstack->dcoffset[pos] > 0)
@@ -2494,4 +2492,107 @@ int ec_receive_processdata(int timeout)
 {
    return ec_receive_processdata_group(0, timeout);
 }
+
+
+int ecx_5cmds_nop(ecx_portt *port, int timeout) {
+   uint8 idx;
+   int wkc;
+
+   uint8 null1 = 0;
+   uint16 null2 = 0;
+   uint32 null4 = 0;
+   uint32 time;
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 nanoseconds = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
+   time = nanoseconds & 0xffffffff;
+
+   idx = ecx_getindex(port);
+   ecx_setupdatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, 0, 0x900, 4, &null4);
+   // DC SysTime L (lower half)
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_ARMW, idx, TRUE, 0, 0x910, 4, &time);
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
+   // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
+   struct outputs {
+      uint16 status_word;
+      uint32 target_pos;
+      uint32 padding;
+   };
+   struct outputs data;
+   data.status_word = 6;
+   data.target_pos = 0x0;
+   data.padding = 0;
+
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, TRUE, 0, 0x100, 10, &data);
+   // Status
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_BRD, idx, FALSE, 0, 0x130, 2, &null2);
+   wkc = ecx_srconfirm(port, idx, timeout);
+   ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   return wkc;
+}
+
+int ecx_5cmds_lrw(ecx_contextt *context, uint16 controlword, uint32 target_pos, our_inputs* in, int timeout) {
+   uint8 idx;
+   int wkc;
+
+   // Initialize port
+   ecx_portt *port = context->port;
+
+   uint8 null1 = 0;
+   uint16 null2 = 0;
+   uint32 null4 = 0;
+   uint32 time;
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 nanoseconds = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
+   time = nanoseconds & 0xffffffff;
+   time = *(context->DCtime) & 0xffffffff;
+
+   idx = ecx_getindex(port);
+   ecx_setupdatagram(port, &(port->txbuf[idx]), EC_CMD_NOP, idx, 0, 0x900, 4, &null4);
+   // DC SysTime L (lower half)
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_ARMW, idx, TRUE, 0, 0x910, 4, &time);
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
+
+   // Set outputs
+   our_outputs data;
+   data.controlword = controlword;
+   data.target_pos = target_pos;
+   data.padding = 0;
+
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRW, idx, TRUE, 0, 0x100, 10, &data);
+   // Status
+   ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_BRD, idx, FALSE, 0, 0x130, 2, &null2);
+   wkc = ecx_srconfirm(port, idx, timeout);
+   ecx_setbufstat(port, idx, EC_BUF_EMPTY);
+
+   uint8* rcvd = port->rxbuf[idx];
+   // printf("------------------------------------\n");
+   // for (int i = 0; i < 100; i++) {
+   //    printf("Received %d: %x\n", i, rcvd[i]);
+   // }
+
+   // Get inputs
+   our_inputs* in_data = (our_inputs*) &rcvd[57];
+
+   *(context->DCtime) = etohll(*((uint32*) &rcvd[28]));
+
+   printf("DC Time: %#lx\t", *(context->DCtime));
+
+   if(in){
+      memcpy(in, in_data, sizeof(our_inputs)); // Start of inputs
+   }
+
+
+   return wkc;
+}
+
+int ec_5cmds_nop(int timeout) {
+   return ecx_5cmds_nop(&ecx_port, timeout);
+}
+int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, our_inputs* in, int timeout) {
+   return ecx_5cmds_lrw(&ecx_context, controlword, target_pos, in, timeout);
+}
+
 #endif

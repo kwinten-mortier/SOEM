@@ -304,6 +304,27 @@ int servo_setup(uint16 slave)
    return retval;
 }
 
+int try_switch(uint16 controlword, uint32* position, uint16 expected_statusword, int num_tries) {
+   for(int i = 0; i < num_tries; i++) {
+      our_inputs in;
+      ec_5cmds_lrw(controlword, *position, &in, EC_TIMEOUTRET3);
+      printf("Inputs: %f - %#x - %d\n", in.position/10000.0, in.statusword, in.erroract);
+
+      // Update position
+      *position = in.position;
+
+      if(in.statusword == expected_statusword) {
+         printf("Statusword: %#x\n", expected_statusword);
+         return 1;
+      }
+
+      osal_usleep(1975 - 350);
+   }
+
+   return 0;
+
+}
+
 void * loop_message(void* ptr) {
    if(!ptr) {
       printf("Error: loop_message should have arguments\n");
@@ -469,12 +490,33 @@ void simpleloop(char *ifname)
          }
          while (chk-- && (ec_slave[1].state != EC_STATE_OPERATIONAL));
 
-         for(int i = 0; i < 10000; i++) {
-            our_inputs in;
-            ec_5cmds_lrw(0x6, 0, &in, EC_TIMEOUTRET3);
-            printf("Inputs: %f - %#x - %d\n", in.position/10000.0, in.statusword, in.erroract);
+         // Initialize target position
+         uint32 target = 0;
 
-            osal_usleep(1975);
+         int ret;
+
+         // Try to switch to state 0x21
+         printf("Switching to state 0x21\n");
+         ret = try_switch(0x6, &target, 0x21, 10000);
+
+         // Try to switch to state 0x23
+         if(ret) {
+            // Got to state 0x21, try to switch to state 0x23
+            printf("Switching to state 0x23\n");
+            ret = try_switch(0x7, &target, 0x23, 10000);
+         }
+
+         // Try to switch to state 0x1027
+         if(ret) {
+            // Got to state 0x23, try to switch to state 0x1027
+            printf("Switching to state 0x1027\n");
+            ret = try_switch(0xf, &target, 0x1027, 10000);
+         }
+
+         // Run a couple of times
+         if(ret) {
+            // Use non-existing statusword to test if it works
+            ret = try_switch(0x1f, &target, 0x0, 10000);
          }
 
          printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
