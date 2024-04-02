@@ -273,7 +273,7 @@ int servo_setup(uint16 slave)
       uint8 physstartbit;
       uint8 type;
       uint8 activate;
-   } FMMU;
+   } __attribute__((packed)) FMMU;
    // Set FMMU0 (maps outputs) 0x600
    FMMU FMMU0;
    FMMU0.logstart = 0x01000000;
