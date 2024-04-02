@@ -4,3 +4,7 @@ install
 /doc/latex
 /doc/html
 tags
+
+
+# Visual Studio Code
+.vscode
