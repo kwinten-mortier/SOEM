@@ -600,7 +600,7 @@ int ecx_5cmds_nop(ecx_portt *port, int timeout) {
    return wkc;
 }
 
-int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, int timeout) {
+int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, our_inputs* in, int timeout) {
    uint8 idx;
    int wkc;
 
@@ -638,10 +638,10 @@ int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, int ti
    // }
 
    // Get inputs
-   our_inputs* in;
-   in = (our_inputs *)&rcvd[57]; // Start of inputs
+   if(in){
+      memcpy(in, &rcvd[57], sizeof(our_inputs)); // Start of inputs
+   }
 
-   printf("Inputs: %f - %#x - %d\n", in->position/10000.0, in->statusword, in->erroract);
 
    return wkc;
 }
@@ -753,7 +753,7 @@ int ec_LRWDC(uint32 LogAdr, uint16 length, void *data, uint16 DCrs, int64 *DCtim
 int ec_5cmds_nop(int timeout) {
    return ecx_5cmds_nop(&ecx_port, timeout);
 }
-int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, int timeout) {
-   return ecx_5cmds_lrw(&ecx_port, controlword, target_pos, timeout);
+int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, our_inputs* in, int timeout) {
+   return ecx_5cmds_lrw(&ecx_port, controlword, target_pos, in, timeout);
 }
 #endif

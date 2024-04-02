@@ -36,7 +36,7 @@ int ecx_LRD(ecx_portt *port, uint32 LogAdr, uint16 length, void *data, int timeo
 int ecx_LWR(ecx_portt *port, uint32 LogAdr, uint16 length, void *data, int timeout);
 int ecx_LRWDC(ecx_portt *port, uint32 LogAdr, uint16 length, void *data, uint16 DCrs, int64 *DCtime, int timeout);
 int ecx_5cmds_nop(ecx_portt *port, int timeout);
-int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, int timeout);
+int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, our_inputs* in, int timeout);
 
 #ifdef EC_VER1
 int ec_setupdatagram(void *frame, uint8 com, uint8 idx, uint16 ADP, uint16 ADO, uint16 length, void *data);
@@ -58,7 +58,7 @@ int ec_LRD(uint32 LogAdr, uint16 length, void *data, int timeout);
 int ec_LWR(uint32 LogAdr, uint16 length, void *data, int timeout);
 int ec_LRWDC(uint32 LogAdr, uint16 length, void *data, uint16 DCrs, int64 *DCtime, int timeout);
 int ec_5cmds_nop(int timeout);
-int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, int timeout);
+int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, our_inputs* in, int timeout);
 #endif
 
 #ifdef __cplusplus

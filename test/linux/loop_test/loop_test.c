@@ -461,7 +461,7 @@ void simpleloop(char *ifname)
          /* wait for all slaves to reach OP state */
          do
          {
-            ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
+            ec_5cmds_lrw(0x6, 0, NULL, EC_TIMEOUTRET3);
             // ec_send_processdata();
             // ec_receive_processdata(EC_TIMEOUTRET);
             ec_writestate(1);
@@ -470,7 +470,9 @@ void simpleloop(char *ifname)
          while (chk-- && (ec_slave[1].state != EC_STATE_OPERATIONAL));
 
          for(int i = 0; i < 10000; i++) {
-            ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
+            our_inputs in;
+            ec_5cmds_lrw(0x6, 0, &in, EC_TIMEOUTRET3);
+            printf("Inputs: %f - %#x - %d\n", in.position/10000.0, in.statusword, in.erroract);
 
             osal_usleep(1975);
          }
