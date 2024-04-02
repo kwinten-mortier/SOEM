@@ -505,6 +505,22 @@ typedef struct
    };
 } ec_errort;
 
+/** Struct for specific outputs **/
+// Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
+typedef struct {
+   uint16 controlword;
+   uint32 target_pos;
+   uint32 padding;
+} our_outputs;
+
+/** Struct for specific inputs **/
+// Inputs (10 bytes): postion (4 bytes) + statusword (2 bytes) + error actual value (4 bytes)
+typedef struct {
+   uint32 position;
+   uint16 statusword;
+   int32 erroract;
+} our_inputs;
+
 /** Helper macros */
 
 /** Set the count value in the Mailbox header */

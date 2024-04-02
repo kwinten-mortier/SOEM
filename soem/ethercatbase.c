@@ -600,7 +600,7 @@ int ecx_5cmds_nop(ecx_portt *port, int timeout) {
    return wkc;
 }
 
-int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
+int ecx_5cmds_lrw(ecx_portt *port, uint16 controlword, uint32 target_pos, int timeout) {
    uint8 idx;
    int wkc;
 
@@ -618,15 +618,11 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
    // DC SysTime L (lower half)
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_ARMW, idx, TRUE, 0, 0x910, 4, &time);
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRD, idx, TRUE, 0, 0x900, 1, &null1);
-   // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
-   struct outputs {
-      uint16 controlword;
-      uint32 target_pos;
-      uint32 padding;
-   };
-   struct outputs data;
-   data.controlword = 6;
-   data.target_pos = 0x02971d70;
+
+   // Set outputs
+   our_outputs data;
+   data.controlword = controlword;
+   data.target_pos = target_pos;
    data.padding = 0;
 
    ecx_adddatagram(port, &(port->txbuf[idx]), EC_CMD_LRW, idx, TRUE, 0, 0x100, 10, &data);
@@ -642,15 +638,10 @@ int ecx_5cmds_lrw(ecx_portt *port, int timeout) {
    // }
 
    // Get inputs
-   typedef struct {
-      uint32 position;
-      uint16 statusword;
-      int32 erroract;
-   } inputs;
-   inputs* in;
-   in = (inputs *)&rcvd[57]; // Start of inputs
+   our_inputs* in;
+   in = (our_inputs *)&rcvd[57]; // Start of inputs
 
-   printf("Inputs: %f - %#x - %d\n", (double)in->position/10000.0, in->statusword, in->erroract);
+   printf("Inputs: %f - %#x - %d\n", in->position/10000.0, in->statusword, in->erroract);
 
    return wkc;
 }
@@ -762,7 +753,7 @@ int ec_LRWDC(uint32 LogAdr, uint16 length, void *data, uint16 DCrs, int64 *DCtim
 int ec_5cmds_nop(int timeout) {
    return ecx_5cmds_nop(&ecx_port, timeout);
 }
-int ec_5cmds_lrw(int timeout) {
-   return ecx_5cmds_lrw(&ecx_port, timeout);
+int ec_5cmds_lrw(uint16 controlword, uint32 target_pos, int timeout) {
+   return ecx_5cmds_lrw(&ecx_port, controlword, target_pos, timeout);
 }
 #endif

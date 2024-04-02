@@ -413,6 +413,8 @@ void simpleloop(char *ifname)
                ec_ALstatuscode2string(ec_slave[1].ALstatuscode));
 
          // ec_configdc(); // Done in transistion
+         // ec_dcsync01();
+         // Start at 14:36:...
 
          // Send 5 cmds with nop
          int iter = 0;
@@ -426,7 +428,7 @@ void simpleloop(char *ifname)
 
          // Send 5 cmds with lrw
          iter = 0;
-         // while(++iter < 100) ec_5cmds_lrw(EC_TIMEOUTRET3);
+         // while(++iter < 100) ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
 
          printf("Slaves mapped, state to SAFE_OP.\n");
          printf("%d =?= %d\n", EC_STATE_SAFE_OP, act_state);
@@ -459,7 +461,7 @@ void simpleloop(char *ifname)
          /* wait for all slaves to reach OP state */
          do
          {
-            ec_5cmds_lrw(EC_TIMEOUTRET3);
+            ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
             // ec_send_processdata();
             // ec_receive_processdata(EC_TIMEOUTRET);
             ec_writestate(1);
@@ -468,7 +470,7 @@ void simpleloop(char *ifname)
          while (chk-- && (ec_slave[1].state != EC_STATE_OPERATIONAL));
 
          for(int i = 0; i < 10000; i++) {
-            ec_5cmds_lrw(EC_TIMEOUTRET3);
+            ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
 
             osal_usleep(1975);
          }

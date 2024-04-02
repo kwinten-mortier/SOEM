@@ -179,7 +179,7 @@ void simpletest(char *ifname)
 
          // Send 5 cmds with lrw
          iter = 0;
-         while(++iter < 100) ec_5cmds_lrw(EC_TIMEOUTRET3);
+         while(++iter < 100) ec_5cmds_lrw(0x6, 0, EC_TIMEOUTRET3);
 
          printf("Slaves mapped, state to SAFE_OP.\n");
          printf("%d =?= %d\n", EC_STATE_SAFE_OP, act_state);
