@@ -493,30 +493,43 @@ void simpleloop(char *ifname)
          // Initialize target position
          uint32 target = 0;
 
-         int ret;
+         our_inputs in;
+         uint16 controlword = 0x6;
+         uint32 position = target;
+         int counter = 0;
+         while(1) {
+            ec_5cmds_lrw(controlword, position, &in, EC_TIMEOUTRET3);
+            printf("Inputs: %f - %#x - %d\n", in.position/10000.0, in.statusword, in.erroract);
 
-         // Try to switch to state 0x21
-         printf("Switching to state 0x21\n");
-         ret = try_switch(0x6, &target, 0x21, 10000);
+            // Update position
+            position = in.position;
 
-         // Try to switch to state 0x23
-         if(ret) {
-            // Got to state 0x21, try to switch to state 0x23
-            printf("Switching to state 0x23\n");
-            ret = try_switch(0x7, &target, 0x23, 10000);
-         }
+            switch(in.statusword) {
+               case 0x28:
+                  controlword = 0x86;
+                  break;
+               case 0x60:
+                  if(counter++ < 10) {
+                     controlword = 0x86;
+                  } else {
+                     controlword = 0x6;
+                  }
+                  break;
+               case 0x21:
+                  controlword = 0x7;
+                  counter = 0;
+                  break;
+               case 0x23:
+                  controlword = 0xf;
+                  break;
+               case 0x1027:
+                  controlword = 0x1f;
+                  break;
+               default:
+                  break;
+            }
 
-         // Try to switch to state 0x1027
-         if(ret) {
-            // Got to state 0x23, try to switch to state 0x1027
-            printf("Switching to state 0x1027\n");
-            ret = try_switch(0xf, &target, 0x1027, 10000);
-         }
-
-         // Run a couple of times
-         if(ret) {
-            // Use non-existing statusword to test if it works
-            ret = try_switch(0x1f, &target, 0x0, 10000);
+            osal_usleep(1975 - 350);
          }
 
          printf("%d =?= %d\n", EC_STATE_OPERATIONAL, act_state);
