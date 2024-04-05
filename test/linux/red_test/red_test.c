@@ -45,6 +45,279 @@ volatile int wkc;
 boolean inOP;
 uint8 currentgroup = 0;
 
+// Run all startup/init commands (for PREOP->SAFEOP), should return 1
+int configservo(uint16 slave) {
+   uint8 u8val;
+   uint16 u16val;
+   uint32 u32val;
+   int retval = 0;
+
+   // Motor Settings
+
+   // Set max current
+   u32val = 48000;
+   retval += ec_SDOwrite(slave, 0x8011, 0x11, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:11: retval = %d\n", retval);
+
+   // Set rated current
+   u32val = 8000;
+   retval += ec_SDOwrite(slave, 0x8011, 0x12, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:12: retval = %d\n", retval);
+
+   // Set motor pole pairs
+   u8val = 3;
+   retval += ec_SDOwrite(slave, 0x8011, 0x13, FALSE, sizeof(u8val), &u8val, EC_TIMEOUTSAFE);
+   printf("0x8011:13: retval = %d\n", retval);
+
+   // Set torque constant
+   u32val = 100;
+   retval += ec_SDOwrite(slave, 0x8011, 0x16, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:16: retval = %d\n", retval);
+   
+   // Set rotor moment of intertia
+   u32val = 253;
+   retval += ec_SDOwrite(slave, 0x8011, 0x18, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:18: retval = %d\n", retval);
+
+   // Set winding inductance
+   u16val = 70;
+   retval += ec_SDOwrite(slave, 0x8011, 0x19, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8011:19: retval = %d\n", retval);
+
+   // Set motor speed limitation
+   u32val = 12000;
+   retval += ec_SDOwrite(slave, 0x8011, 0x1b, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:1b: retval = %d\n", retval);
+
+   // Set motor temperature warn level
+   u16val = 1200;
+   retval += ec_SDOwrite(slave, 0x8011, 0x2b, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8011:2b: retval = %d\n", retval);
+
+   // Set motor temperature error level
+   u16val = 1400;
+   retval += ec_SDOwrite(slave, 0x8011, 0x2c, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8011:2c: retval = %d\n", retval);
+
+   // Set motor thermal time constant
+   u16val = 1050;
+   retval += ec_SDOwrite(slave, 0x8011, 0x2d, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8011:2d: retval = %d\n", retval);
+
+   // Set winding resistance
+   u32val = 360;
+   retval += ec_SDOwrite(slave, 0x8011, 0x30, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:30: retval = %d\n", retval);
+
+   // Set voltage constant
+   u32val = 5500;
+   retval += ec_SDOwrite(slave, 0x8011, 0x31, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8011:31: retval = %d\n", retval);
+
+   // Set commutation offset
+   u16val = 270;
+   retval += ec_SDOwrite(slave, 0x8011, 0x15, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8011:15: retval = %d\n", retval);
+
+   // Outputs
+
+   // Set torque limitation
+   u16val = 2250;
+   retval += ec_SDOwrite(slave, 0x7010, 0x0b, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x7010:0b: retval = %d\n", retval);
+
+   // Amplifier Settings
+
+   // Set current loop P gain
+   u16val = 39;
+   retval += ec_SDOwrite(slave, 0x8010, 0x13, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8010:13: retval = %d\n", retval);
+
+   // Set current loop I gain
+   u16val = 19;
+   retval += ec_SDOwrite(slave, 0x8010, 0x12, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   printf("0x8010:12: retval = %d\n", retval);
+
+   // Set velocity loop P gain
+   u32val = 224;
+   retval += ec_SDOwrite(slave, 0x8010, 0x15, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8010:15: retval = %d\n", retval);
+
+   // Set velocity loop I gain
+   u32val = 150;
+   retval += ec_SDOwrite(slave, 0x8010, 0x14, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   printf("0x8010:14: retval = %d\n", retval);
+
+   // FB Settings
+
+   // Set observer feed-forward
+   u8val = 100;
+   retval += ec_SDOwrite(slave, 0x8000, 0x15, FALSE, sizeof(u8val), &u8val, EC_TIMEOUTSAFE);
+   printf("0x8000:15: retval = %d\n", retval);
+
+   // Amplifier Settings
+
+   // Set nominal DC link voltage
+   u32val = 24000;
+   retval += ec_SDOwrite(slave, 0x8010, 0x19, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   // TODO: Again, same FPRD command seems to be needed to read in data from the slave
+   // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
+   printf("0x8010:19: retval = %d\n", retval);
+   return retval;
+}
+
+// Should return 4
+int setupdc(uint16 slave)
+{
+   int retval = 0;
+   // Register SYNC0 and SYNC1 cycle time
+   uint32 cycletime_01[2] = {0xf424, 0x1d905c};
+   retval += ec_FPWR(ec_slave[slave].configadr, 0x9a0, sizeof(cycletime_01), &cycletime_01, EC_TIMEOUTRET);
+   printf("0x9a0: retval = %d\n", retval);
+
+   // Set DC StartTime0
+   // Get the current time
+   ec_timet mastertime = osal_current_time();
+   mastertime.sec -= 946684800UL;  /* EtherCAT uses 2000-01-01 as epoch start instead of 1970-01-01 */
+   uint64 DC_starttime_0 = (((uint64)mastertime.sec * 1000000) + (uint64)mastertime.usec) * 1000;
+   uint8 idx = ec_getindex();
+   ec_setupdatagram(NULL, EC_CMD_FPWR, idx, ec_slave[slave].configadr, 0x990, sizeof(DC_starttime_0), &DC_starttime_0);
+   uint64 null8 = 0;
+   ec_adddatagram(NULL, EC_CMD_FPRD, idx, FALSE, ec_slave[slave].configadr, 0x910, sizeof(null8), &null8);
+   retval += ec_srconfirm(idx, EC_TIMEOUTRET);
+   ec_setbufstat(idx, EC_BUF_EMPTY);
+   printf("0x990 and 0x910: retval = %d\n", retval);
+
+   // Set DC Cycle Unit and Activation
+   uint8 DC_CU_ACT[2] = {0, 0x7};
+   retval += ec_FPWR(ec_slave[slave].configadr, 0x980, sizeof(DC_CU_ACT), &DC_CU_ACT, EC_TIMEOUTRET);
+   printf("0x980: retval = %d\n", retval);
+
+   // Set DC Latch0 and Latch1
+   uint8 DC_Latch_01[2] = {0, 0};
+   retval += ec_FPWR(ec_slave[slave].configadr, 0x9a8, sizeof(DC_Latch_01), &DC_Latch_01, EC_TIMEOUTRET);
+   printf("0x9a8: retval = %d\n", retval);
+
+   return retval;
+}
+
+
+// I think separate function might be needed for each phase of the setup, but not sure
+// Init commands seem to be called automatically, but not sure if they are called at the right time
+// Some init commands are called at the right time, but not all of them???
+// Init commands: I->P vs P->S vs S->O
+// TODO: Init commands (see IO->Device->EtherCAT->Advanced Settings...->General->Init Commands)
+
+
+// Startup commands
+int servo_setup(uint16 slave)
+{
+   int retval;
+   uint16 u16val;
+   uint32 u32val;
+   
+   retval = 0;
+
+   /* set Revision number*/
+   u32val = 0x00110000;
+   retval += ec_SDOwrite(slave, 0xf081, 0x01, FALSE, sizeof(u32val), &u32val, EC_TIMEOUTSAFE);
+   // TODO: FPRD to let slave fill in data of the SDO. Answer is Mbx(CoE SDO) so maybe ec_SDOread? Ado = 0x1100 (Start FMMU/SM1) / Mailbox In / length = 256
+   // For Ado = 0x1100, also look at section 3.8.4 of "the EtherCAT thesis" 
+   // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
+   // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
+
+   printf("0xf081: retval = %d\n", retval); // Why do we get -5??? -> See Comment in ec_SDOwrite in ethercat.c (print wkc for debugging)
+                                    // retval = -5 means return value request timeout
+                                    // We get this for every startup command, so maybe the slave is not in the right state?
+   /* set Flags */
+   u16val = 0x0001;
+   retval += ec_SDOwrite(slave, 0x10f3, 0x05, FALSE, sizeof(u16val), &u16val, EC_TIMEOUTSAFE);
+   // TODO: FPRD to let slave fill in data of the SDO. Answer is Mbx(CoE SDO) so maybe ec_SDOread? Ado = 0x1100 (Start FMMU/SM1) / Mailbox In / length = 256
+   // Why do we get so much FPRD messages with Ado = 0x80d (Status Register SM1 (SM1 = Mailbox In (Slave to Master)))?
+   // We also get 1 message with Ado = 0x805 (Status Register SM0 (SMO = Mailbox Out (Master to Slave)))?
+   printf("0x10f3: retval = %d\n", retval);
+   
+   /* Map velocity(?) PDO assignment via Complete Access*/
+   uint16 map_1c12[3] = {0x0002, 0x1600, 0x1606};
+   uint16 map_1c13[4] = {0x0003, 0x1a00, 0x1a01, 0x1a06};
+   retval += ec_SDOwrite(slave, 0x1c12, 0x00, TRUE, sizeof(map_1c12), &map_1c12, EC_TIMEOUTSAFE);
+   printf("0x1c12: retval = %d\n", retval);
+   retval += ec_SDOwrite(slave, 0x1c13, 0x00, TRUE, sizeof(map_1c13), &map_1c13, EC_TIMEOUTSAFE);
+   // TODO: Again, same FPRD command seems to be needed to read in data from the slave
+   // Same for the FPRD messages with Ado = 0x80d and Ado = 0x805
+   printf("0x1c13: retval = %d\n", retval);
+
+   // Configure servo drive
+   retval += configservo(slave);
+
+   // // Setup DC
+   // retval += setupdc(slave);
+
+   // // Set syncmanagers
+   // typedef struct {
+   //    uint16 start;
+   //    uint16 length;
+   //    uint16 controlstatus;
+   //    uint16 enable;
+   // } SM;
+   // // Set SM0
+   // SM SM0;
+   // SM0.start = 0x1200;
+   // SM0.length = 0x0006;
+   // SM0.controlstatus = 0x0024;
+   // SM0.enable = 0x0001;
+   // retval += ec_FPWR(ec_slave[slave].configadr, 0x810, sizeof(SM), &SM0, EC_TIMEOUTRET);
+   // printf("0x810: retval = %d\n", retval);
+   
+   // // Set SM1
+   // SM SM1;
+   // SM1.start = 0x1400;
+   // SM1.length = 0x000a;
+   // SM1.controlstatus = 0x0020;
+   // SM1.enable = 0x0001;
+   // retval += ec_FPWR(ec_slave[slave].configadr, 0x818, sizeof(SM), &SM1, EC_TIMEOUTRET);
+   // printf("0x818: retval = %d\n", retval);
+
+
+   // typedef struct {
+   //    uint32 logstart;
+   //    uint16 loglength;
+   //    uint8 startbit;
+   //    uint8 endbit;
+   //    uint16 physstart;
+   //    uint8 physstartbit;
+   //    uint8 type;
+   //    uint8 activate;
+   // } __attribute__((packed)) FMMU;
+   // // Set FMMU0 (maps outputs) 0x600
+   // FMMU FMMU0;
+   // FMMU0.logstart = 0x01000000;
+   // FMMU0.loglength = 0x0006;
+   // FMMU0.startbit = 0;
+   // FMMU0.endbit = 7;
+   // FMMU0.physstart = 0x1200;
+   // FMMU0.physstartbit = 0;
+   // FMMU0.type = 0x02;
+   // FMMU0.activate = 0x01;
+   // retval += ec_FPWR(ec_slave[slave].configadr, 0x600, sizeof(FMMU), &FMMU0, EC_TIMEOUTRET);
+   // printf("0x600: retval = %d\n", retval);
+   
+   // // Set FMMU1 (maps inputs) 0x610
+   // FMMU FMMU1;
+   // FMMU1.logstart = 0x01000000;
+   // FMMU1.loglength = 0x000a;
+   // FMMU1.startbit = 0;
+   // FMMU1.endbit = 7;
+   // FMMU1.physstart = 0x1400;
+   // FMMU1.physstartbit = 0;
+   // FMMU1.type = 0x01;
+   // FMMU1.activate = 0x01;
+   // retval += ec_FPWR(ec_slave[slave].configadr, 0x610, sizeof(FMMU), &FMMU1, EC_TIMEOUTRET);
+   // printf("0x610: retval = %d\n", retval);
+
+   printf("Servo slave %d set, retval = %d\n", slave, retval);
+   return retval;
+}
 
 void redtest(char *ifname, char *ifname2)
 {
@@ -65,8 +338,11 @@ void redtest(char *ifname, char *ifname2)
          /* wait for all slaves to reach SAFE_OP state */
          ec_statecheck(0, EC_STATE_SAFE_OP,  EC_TIMEOUTSTATE);
 
+         ec_slave[1].PO2SOconfig = servo_setup;
+
          /* configure DC options for every DC capable slave found in the list */
          ec_configdc();
+         ec_dcsync01(1, TRUE, 62500, 0, 0);
 
          /* read indevidual slave state and store in ec_slave[] */
          ec_readstate();
