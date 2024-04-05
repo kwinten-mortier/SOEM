@@ -1722,6 +1722,10 @@ static int ecx_main_send_processdata(ecx_contextt *context, uint8 group, boolean
       first = TRUE;
    }
 
+   context->grouplist[group].Obytes = 10;
+   context->grouplist[group].Ibytes = 6;
+   context->grouplist[group].logstartaddr = 0x1000000;
+
    /* For overlapping IO map use the biggest */
    if(use_overlap_io == TRUE)
    {
@@ -1842,6 +1846,19 @@ static int ecx_main_send_processdata(ecx_contextt *context, uint8 group, boolean
          do
          {
             sublength = (uint16)context->grouplist[group].IOsegment[currentsegment++];
+            sublength = 10;
+
+            typedef struct {
+               uint16 controlword;
+               uint32 target_pos;
+               uint32 padding;
+            } __attribute__((packed)) our_outputs;
+            our_outputs outputs;
+            outputs.controlword = 0x6;
+            outputs.target_pos = 0;
+            outputs.padding = 0;
+
+            data = (uint8*)&outputs;
             /* get new index */
             idx = ecx_getindex(context->port);
             w1 = LO_WORD(LogAdr);
@@ -1851,11 +1868,17 @@ static int ecx_main_send_processdata(ecx_contextt *context, uint8 group, boolean
             if(first)
             {
                /* FPRMW in second datagram */
-               DCO = ecx_adddatagram(context->port, &(context->port->txbuf[idx]), EC_CMD_FRMW, idx, FALSE,
+               DCO = ecx_adddatagram(context->port, &(context->port->txbuf[idx]), EC_CMD_FRMW, idx, TRUE,
                                         context->slavelist[context->grouplist[group].DCnext].configadr,
                                         ECT_REG_DCSYSTIME, sizeof(int64), context->DCtime);
                first = FALSE;
             }
+
+            // Add state
+            uint16 null2 = 0;
+            ecx_adddatagram(context->port, &(context->port->txbuf[idx]), EC_CMD_BRD, idx, FALSE,
+                                        0, 0x130, 2, &null2);
+
             /* send frame */
             ecx_outframe_red(context->port, idx);
             /* push index and data pointer on stack.
