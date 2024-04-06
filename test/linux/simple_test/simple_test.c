@@ -9,9 +9,13 @@
  * (c)Arthur Ketels 2010 - 2011
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include <pthread.h>
+#include <sched.h>
 
 #include "ethercat.h"
 
@@ -88,9 +92,195 @@ void get_input_int16(uint16_t slave_nb, uint8_t module_index, int16_t *value)
    *value |= ((*data_ptr) << 8) & 0xff00;
 }
 
+void * loop_message(void* ptr) {
+   if(!ptr) {
+      printf("Error: loop_message should have arguments\n");
+      pthread_exit(NULL);
+   }
 
-void start_loop() {
-   int chk;
+   int chk = *(int*)ptr;
+
+   int i, j, oloop, iloop;
+
+            oloop = ec_slave[0].Obytes;
+         if ((oloop == 0) && (ec_slave[0].Obits > 0))
+            oloop = 1;
+         if (oloop > 8)
+            oloop = 8;
+         iloop = ec_slave[0].Ibytes;
+         if ((iloop == 0) && (ec_slave[0].Ibits > 0))
+            iloop = 1;
+         if (iloop > 8)
+            iloop = 8;
+
+   // Start precise timer for 2000us
+   // use clock_gettime(CLOCK_MONOTONIC, &ts) for better precision
+   struct timespec tcur={0,0}, tprev={0,0};
+   clock_gettime(CLOCK_MONOTONIC, &tcur);
+   tprev = tcur;
+
+   int target = 0;
+
+   while(chk > 0) {
+      i = chk;
+      // Start precise timer for 2000us
+      do {
+         clock_gettime(CLOCK_MONOTONIC, &tcur);
+      } while((tcur.tv_sec - tprev.tv_sec) * 1000000000 + (tcur.tv_nsec - tprev.tv_nsec) < 1000000);
+      tprev = tcur;
+
+      // Do logic
+      ec_send_processdata();
+      wkc = ec_receive_processdata(EC_TIMEOUTRET);
+
+      if (wkc >= expectedWKC)
+      {
+         printf("Processdata cycle %4d, WKC %d , O:", i, wkc);
+
+         for(j = 0 ; j < oloop; j++)
+         {
+               printf(" %2.2x", *(ec_slave[0].outputs + j));
+         }
+
+         printf(" I:");
+         for(j = 0 ; j < iloop; j++)
+         {
+               printf(" %2.2x", *(ec_slave[0].inputs + j));
+         }
+         printf(" T:%"PRId64"\r",ec_DCtime);
+         needlf = TRUE;
+
+         int16_t statusword = 0;
+         /* The input address for get_input_int16 must be devided by two. 0xA
+         is the starting address of inputs*/
+         get_input_int16(1, (0xC - 0x8) >> 1, (int16_t *)&statusword);
+
+         // statusword = statusword >> 1;
+         // statusword = statusword & ~(0b1 << 5);
+
+         STATUS_WORD_MASK(statusword);
+         // printf("Statusword: %#x (%d)\n", statusword, statusword);
+
+
+         switch (statusword)
+         {
+         case (Not_ready_to_switch_on):
+         {
+            /* Now the FSM should automatically go to Switch_on_disabled*/
+            break;
+         }
+         case (Switch_on_disabled):
+         case (Switch_on_disabled | (0b1 << 5)):
+         {
+            /* Automatic transition (2)*/
+            controlword = 0;
+            controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
+            if(i % 10 == 0) {
+               controlword |= 1 << control_fault_reset;
+            }
+            break;
+         }
+         case (Ready_to_switch_on):
+         // case (Ready_to_switch_on | (0b1 << 5)):
+         {
+            /* Switch on command for transition (3) */
+            controlword |= 1 << control_switch_on;
+            controlword = 0x07;
+            break;
+         }
+         case (Switch_on):
+         {
+            /* Enable operation command for transition (4) */
+            controlword |= 1 << control_enable_operation;
+            break;
+         }
+         case (Operation_enabled):
+         {
+            /* Setting modes of operation
+                     * Value Description
+                     -128...-2 Reserved
+                     -1 No mode
+                     0 Reserved
+                     1 Profile position mode
+                     2 Velocity (not supported)
+                     3 Profiled velocity mode
+                     4 Torque profiled mode
+                     5 Reserved
+                     6 Homing mode
+                     7 Interpolated position mode
+                     8 Cyclic Synchronous position
+                     ...127 Reserved*/
+
+            uint16_t mode = 8; /* Setting Cyclic Synchronous position */
+            int mode_size = sizeof(mode);
+            int SDO_result = ec_SDOwrite(1, MODES_OF_OPERATION_INDEX, 0,
+                                       0, mode_size, &mode, EC_TIMEOUTRXM);
+            controlword |= 0x1f;
+            break;
+         }
+         case (Quick_stop_active):
+         {
+            break;
+         }
+         case (Fault_reaction_active):
+         {
+            break;
+         }
+         case (Fault):
+         case (0x28):
+         {
+            /* Returning to Switch on Disabled */
+            controlword = (1 << control_fault_reset);
+            controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
+            break;
+         }
+         default:
+         {
+            printf("Unrecognized status\n");
+            break;
+         }
+         }
+
+         // printf("Controlword: %#x\n", controlword);
+         set_output_int16(1, 0 >> 1, controlword);
+
+         int16_t value_high = 0;
+         int16_t value_low = 0;
+         int32_t value = 0;
+
+
+         get_input_int16(1, (0x6 - 0x6) >> 1, (int16_t*) &value_low);
+         get_input_int16(1, (0x8 - 0x6) >> 1, (int16_t*) &value_high);
+         value = ((value_high << 16) & 0xffff0000) | (value_low & 0x00ffff);
+
+         if (target - 5 < value && value < target + 5) {
+            value = target;
+         } else if(value < target) {
+            value += 1000;
+         } else if(value > target) {
+            value -= 1000;
+         }
+
+
+
+         // value = 0x07070707;
+
+         /* Setting output */
+         set_output_int16(1, 0x2 >> 1, (int16_t)(value & 0xffff) );
+         set_output_int16(1, 0x4 >> 1, (int16_t)((value >> 16) & 0xffff));
+
+
+
+      }
+
+      // Increment chk
+      chk--;
+   }
+
+   pthread_exit(NULL);
+}
+
+void start_loop(int chk) {
    // Set attributes for thread to be locked to specific cpu with high (realtime) priority
    pthread_t thread;
    pthread_attr_t attr;
@@ -104,7 +294,6 @@ void start_loop() {
    param.sched_priority = 99;
    pthread_attr_setschedparam(&attr, &param);
 
-   chk = 200;
    // Create thread
    pthread_create(&thread, &attr, loop_message, &chk);
 
@@ -146,6 +335,9 @@ void simpletest(char *ifname)
          /* wait for all slaves to reach SAFE_OP state */
          ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE * 4);
 
+         osal_usleep(100000);
+
+
          oloop = ec_slave[0].Obytes;
          if ((oloop == 0) && (ec_slave[0].Obits > 0))
             oloop = 1;
@@ -164,8 +356,8 @@ void simpletest(char *ifname)
          printf("Calculated workcounter %d\n", expectedWKC);
          ec_slave[0].state = EC_STATE_OPERATIONAL;
          /* send one valid process data to make outputs in slaves happy*/
-         ec_send_processdata();
-         ec_receive_processdata(EC_TIMEOUTRET);
+         // ec_send_processdata();
+         // ec_receive_processdata(EC_TIMEOUTRET);
          /* request OP state for all slaves */
          ec_writestate(0);
          chk = 200;
@@ -173,152 +365,176 @@ void simpletest(char *ifname)
          do
          {
             ec_send_processdata();
-            ec_writestate(0);
+            // ec_writestate(0);
             ec_receive_processdata(EC_TIMEOUTRET);
             ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
          } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+
+         ec_statecheck(0, EC_STATE_OPERATIONAL, EC_TIMEOUTSTATE * 4);
+
+         osal_usleep(1000000);
+
 
          if (ec_slave[0].state == EC_STATE_OPERATIONAL)
          {
             printf("Operational state reached for all slaves.\n");
             inOP = TRUE;
-            /* cyclic loop */
-            for (i = 1; i <= 10000; i++)
-            {
-               ec_send_processdata();
-               wkc = ec_receive_processdata(EC_TIMEOUTRET);
-
-               if (wkc >= expectedWKC)
-               {
-                  printf("Processdata cycle %4d, WKC %d , O:", i, wkc);
-
-                  for(j = 0 ; j < oloop; j++)
-                  {
-                      printf(" %2.2x", *(ec_slave[0].outputs + j));
-                  }
-
-                  printf(" I:");
-                  for(j = 0 ; j < iloop; j++)
-                  {
-                      printf(" %2.2x", *(ec_slave[0].inputs + j));
-                  }
-                  printf(" T:%"PRId64"\r",ec_DCtime);
-                  needlf = TRUE;
-
-                  int16_t statusword = 0;
-                  /* The input address for get_input_int16 must be devided by two. 0xA
-                  is the starting address of inputs*/
-                  get_input_int16(1, (0xC - 0x8) >> 1, (int16_t *)&statusword);
-
-                  // statusword = statusword >> 1;
-                  // statusword = statusword & ~(0b1 << 5);
-
-                  STATUS_WORD_MASK(statusword);
-                  printf("Statusword: %#x (%d)\n", statusword, statusword);
 
 
-                  switch (statusword)
-                  {
-                  case (Not_ready_to_switch_on):
-                  {
-                     /* Now the FSM should automatically go to Switch_on_disabled*/
-                     break;
-                  }
-                  case (Switch_on_disabled):
-                  case (Switch_on_disabled | (0b1 << 5)):
-                  {
-                     /* Automatic transition (2)*/
-                     controlword = 0;
-                     controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
-                     if(i % 10 == 0) {
-                        controlword |= 1 << control_fault_reset;
-                     }
-                     break;
-                  }
-                  case (Ready_to_switch_on):
-                  // case (Ready_to_switch_on | (0b1 << 5)):
-                  {
-                     /* Switch on command for transition (3) */
-                     controlword |= 1 << control_switch_on;
-                     controlword = 0x01;
-                     break;
-                  }
-                  case (Switch_on):
-                  {
-                     /* Enable operation command for transition (4) */
-                     controlword |= 1 << control_enable_operation;
-                     break;
-                  }
-                  case (Operation_enabled):
-                  {
-                     /* Setting modes of operation
-                             * Value Description
-                             -128...-2 Reserved
-                             -1 No mode
-                             0 Reserved
-                             1 Profile position mode
-                             2 Velocity (not supported)
-                             3 Profiled velocity mode
-                             4 Torque profiled mode
-                             5 Reserved
-                             6 Homing mode
-                             7 Interpolated position mode
-                             8 Cyclic Synchronous position
-                             ...127 Reserved*/
+            ec_send_processdata();
+            wkc = ec_receive_processdata(EC_TIMEOUTRET);
 
-                     uint16_t mode = 8; /* Setting Cyclic Synchronous position */
-                     int mode_size = sizeof(mode);
-                     int SDO_result = ec_SDOwrite(1, MODES_OF_OPERATION_INDEX, 0,
-                                              0, mode_size, &mode, EC_TIMEOUTRXM);
-                     break;
-                  }
-                  case (Quick_stop_active):
-                  {
-                     break;
-                  }
-                  case (Fault_reaction_active):
-                  {
-                     break;
-                  }
-                  case (Fault):
-                  case (0x28):
-                  {
-                     /* Returning to Switch on Disabled */
-                     controlword = (1 << control_fault_reset);
-                     controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
-                     break;
-                  }
-                  default:
-                  {
-                     printf("Unrecognized status\n");
-                     break;
-                  }
-                  }
+            printf("WKC: %d\n", wkc);
 
-                  // printf("Controlword: %#x\n", controlword);
-                   set_output_int16(1, 0 >> 1, controlword);
-
-                   int16_t value_high = 0;
- int16_t value_low = 0;
- int32_t value = 0;
+            if (wkc>= 1) {
+               int16_t statusword = 0;
+               get_input_int16(1, (0xC - 0x8) >> 1, (int16_t *)&statusword);
+               
+               printf("Statusword: %#x (%d)\n", statusword, statusword);
 
 
- get_input_int16(1, (0x6 - 0x6) >> 1, (int16_t*) &value_low);
- get_input_int16(1, (0x8 - 0x6) >> 1, (int16_t*) &value_high);
- value = ((value_high << 16) & 0xffff0000) | (value_low & 0x00ffff);
-//  value += 3;
+            // Start precise loop
+            start_loop(10000);
 
-value = 0x07070707;
-   
- /* Setting output */
- set_output_int16(1, 0x2 >> 1, (int16_t)(value & 0xffff) );
- set_output_int16(1, 0x4 >> 1, (int16_t)((value >> 16) & 0xffff));
-
-
-
-               }
-               osal_usleep(1000);
             }
+
+            /* cyclic loop */
+            // for (i = 1; i <= 10000; i++)
+            // {
+            //    ec_send_processdata();
+            //    wkc = ec_receive_processdata(EC_TIMEOUTRET);
+
+            //    if (wkc >= expectedWKC)
+            //    {
+            //       printf("Processdata cycle %4d, WKC %d , O:", i, wkc);
+
+            //       for(j = 0 ; j < oloop; j++)
+            //       {
+            //           printf(" %2.2x", *(ec_slave[0].outputs + j));
+            //       }
+
+            //       printf(" I:");
+            //       for(j = 0 ; j < iloop; j++)
+            //       {
+            //           printf(" %2.2x", *(ec_slave[0].inputs + j));
+            //       }
+            //       printf(" T:%"PRId64"\r",ec_DCtime);
+            //       needlf = TRUE;
+
+            //       int16_t statusword = 0;
+            //       /* The input address for get_input_int16 must be devided by two. 0xA
+            //       is the starting address of inputs*/
+            //       get_input_int16(1, (0xC - 0x8) >> 1, (int16_t *)&statusword);
+
+            //       // statusword = statusword >> 1;
+            //       // statusword = statusword & ~(0b1 << 5);
+
+            //       STATUS_WORD_MASK(statusword);
+            //       printf("Statusword: %#x (%d)\n", statusword, statusword);
+
+
+            //       switch (statusword)
+            //       {
+            //       case (Not_ready_to_switch_on):
+            //       {
+            //          /* Now the FSM should automatically go to Switch_on_disabled*/
+            //          break;
+            //       }
+            //       case (Switch_on_disabled):
+            //       case (Switch_on_disabled | (0b1 << 5)):
+            //       {
+            //          /* Automatic transition (2)*/
+            //          controlword = 0;
+            //          controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
+            //          if(i % 10 == 0) {
+            //             controlword |= 1 << control_fault_reset;
+            //          }
+            //          break;
+            //       }
+            //       case (Ready_to_switch_on):
+            //       // case (Ready_to_switch_on | (0b1 << 5)):
+            //       {
+            //          /* Switch on command for transition (3) */
+            //          controlword |= 1 << control_switch_on;
+            //          controlword = 0x01;
+            //          break;
+            //       }
+            //       case (Switch_on):
+            //       {
+            //          /* Enable operation command for transition (4) */
+            //          controlword |= 1 << control_enable_operation;
+            //          break;
+            //       }
+            //       case (Operation_enabled):
+            //       {
+            //          /* Setting modes of operation
+            //                  * Value Description
+            //                  -128...-2 Reserved
+            //                  -1 No mode
+            //                  0 Reserved
+            //                  1 Profile position mode
+            //                  2 Velocity (not supported)
+            //                  3 Profiled velocity mode
+            //                  4 Torque profiled mode
+            //                  5 Reserved
+            //                  6 Homing mode
+            //                  7 Interpolated position mode
+            //                  8 Cyclic Synchronous position
+            //                  ...127 Reserved*/
+
+            //          uint16_t mode = 8; /* Setting Cyclic Synchronous position */
+            //          int mode_size = sizeof(mode);
+            //          int SDO_result = ec_SDOwrite(1, MODES_OF_OPERATION_INDEX, 0,
+            //                                   0, mode_size, &mode, EC_TIMEOUTRXM);
+            //          break;
+            //       }
+            //       case (Quick_stop_active):
+            //       {
+            //          break;
+            //       }
+            //       case (Fault_reaction_active):
+            //       {
+            //          break;
+            //       }
+            //       case (Fault):
+            //       case (0x28):
+            //       {
+            //          /* Returning to Switch on Disabled */
+            //          controlword = (1 << control_fault_reset);
+            //          controlword |= (1 << control_enable_voltage) | (1 << control_quick_stop);
+            //          break;
+            //       }
+            //       default:
+            //       {
+            //          printf("Unrecognized status\n");
+            //          break;
+            //       }
+            //       }
+
+            //       // printf("Controlword: %#x\n", controlword);
+            //       set_output_int16(1, 0 >> 1, controlword);
+
+            //       int16_t value_high = 0;
+            //       int16_t value_low = 0;
+            //       int32_t value = 0;
+
+
+            //       get_input_int16(1, (0x6 - 0x6) >> 1, (int16_t*) &value_low);
+            //       get_input_int16(1, (0x8 - 0x6) >> 1, (int16_t*) &value_high);
+            //       value = ((value_high << 16) & 0xffff0000) | (value_low & 0x00ffff);
+            //       //  value += 3;
+
+            //       // value = 0x07070707;
+
+            //       /* Setting output */
+            //       set_output_int16(1, 0x2 >> 1, (int16_t)(value & 0xffff) );
+            //       set_output_int16(1, 0x4 >> 1, (int16_t)((value >> 16) & 0xffff));
+
+
+
+            //    }
+            //    osal_usleep(1000);
+            // }
             inOP = FALSE;
          }
          else
