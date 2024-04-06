@@ -21,7 +21,7 @@
 
 #define EC_TIMEOUTMON 500
 #define STATUS_WORD_MASK(x) (x &= 0x6F)
-#define MODES_OF_OPERATION_INDEX (0x6060)
+#define MODES_OF_OPERATION_INDEX (0x7010)
 
 /** Struct for specific outputs **/
 // Outputs (6 bytes (pad to 10)): Controlword (2 bytes) + Target position (4 bytes) + padding (4 bytes)
@@ -35,9 +35,11 @@ typedef struct
 // Inputs (10 bytes): postion (4 bytes) + statusword (2 bytes) + error actual value (4 bytes)
 typedef struct
 {
-   uint32 position;
-   uint16 statusword;
-   int32 erroract;
+   uint32_t position;
+   uint16_t statusword;
+   int32_t velocity;
+   int16_t torque;
+   int32_t erroract;
 } __attribute__((packed)) our_inputs;
 
 typedef enum
@@ -67,7 +69,7 @@ typedef enum
 
 uint16_t controlword = 0x0;
 
-char IOmap[4096];
+char IOmap[8096];
 OSAL_THREAD_HANDLE thread1;
 int expectedWKC;
 boolean needlf;
@@ -92,6 +94,24 @@ int configservo(uint16 slave)
    uint16 u16val;
    uint32 u32val;
    int retval = 0;
+
+   // Save to EEPROM
+
+   // Modes of operation setting
+   u8val = 8;
+   retval += ec_SDOwrite(slave, 0x7010, 0x0003, FALSE, sizeof(u8val), &u8val, EC_TIMEOUTSAFE);
+   printf("0x7010:03: retval = %d\n", retval);
+
+   uint16_t map_velocity_1c12[] = {0x0002, 0x1600, 0x1601} ;
+   uint16_t map_velocity_1c13[] = {0x0005, 0x1A00, 0x1A01, 0x1A02, 0x1A03, 0x1A06};
+
+   uint16_t map_position_1c12[] = {0x0002, 0x1600, 0x1606};
+   uint16_t map_position_1c13[] = {0x0005, 0x1A00, 0x1A01, 0x1A02, 0x1A03, 0x1A06};
+
+   retval += ec_SDOwrite(slave, 0x1c12, 0x00, TRUE, sizeof(map_position_1c12), map_position_1c12, EC_TIMEOUTSAFE);
+   printf("0x1c12:00: retval = %d\n", retval);
+   retval += ec_SDOwrite(slave, 0x1c13, 0x00, TRUE, sizeof(map_position_1c13), map_position_1c13, EC_TIMEOUTSAFE);
+   printf("0x1c13:00: retval = %d\n", retval);
 
    // Motor Settings
 
@@ -200,6 +220,9 @@ int configservo(uint16 slave)
    u8val = 100;
    retval += ec_SDOwrite(slave, 0x8000, 0x15, FALSE, sizeof(u8val), &u8val, EC_TIMEOUTSAFE);
    printf("0x8000:15: retval = %d\n", retval);
+
+   
+
 
    // Amplifier Settings
 
@@ -336,10 +359,10 @@ void *loop_message(void *ptr)
                         8 Cyclic Synchronous position
                         ...127 Reserved*/
 
-               uint16_t mode = 8; /* Setting Cyclic Synchronous position */
+               uint16_t mode = 1; /* Setting Cyclic Synchronous position */
                int mode_size = sizeof(mode);
-               int SDO_result = ec_SDOwrite(1, MODES_OF_OPERATION_INDEX, 0,
-                                            0, mode_size, &mode, EC_TIMEOUTRXM);
+               // int SDO_result = ec_SDOwrite(1, MODES_OF_OPERATION_INDEX, 0,
+               //                              0, mode_size, &mode, EC_TIMEOUTRXM);
                controlword |= 0x1f;
 
                operation_enabled = 1;
@@ -369,6 +392,8 @@ void *loop_message(void *ptr)
             }
          }
 
+
+
          relative_offset += 500 * direction;
 
          if (direction == 1 && (int32_t )target - (int32_t) inputs.position > 250000)
@@ -380,11 +405,13 @@ void *loop_message(void *ptr)
             relative_offset = -250000; //target - inputs.position;
          }
 
-         target = inputs.position + relative_offset;
+         target = 125000000 * direction;
 
          printf("Target: %d ", target);
          printf("Value: %d ", inputs.position);
          printf("Relative offset: %d ", relative_offset);
+         printf("Velocity %d ", inputs.velocity);
+         printf("Torque %d ", inputs.torque);
          printf("Controlword: %#x ", controlword);
          printf("Statusword: %#x (%d) ", statusword, statusword);
          printf("Error: %d\r", inputs.erroract);
@@ -395,7 +422,7 @@ void *loop_message(void *ptr)
       // Increment chk
       chk--;
 
-      if (chk % 2000 == 0) {
+      if (chk % 200 == 0) {
          direction = -direction;
       }
    }
@@ -481,8 +508,8 @@ void simpletest(char *ifname)
          printf("Calculated workcounter %d\n", expectedWKC);
          ec_slave[0].state = EC_STATE_OPERATIONAL;
          /* send one valid process data to make outputs in slaves happy*/
-         // ec_send_processdata();
-         // ec_receive_processdata(EC_TIMEOUTRET);
+         ec_send_processdata();
+         ec_receive_processdata(EC_TIMEOUTRET);
          /* request OP state for all slaves */
          ec_writestate(0);
          chk = 200;
@@ -506,6 +533,8 @@ void simpletest(char *ifname)
 
             ec_send_processdata();
             wkc = ec_receive_processdata(EC_TIMEOUTRET);
+
+            
 
             printf("WKC: %d\n", wkc);
 
